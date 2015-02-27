@@ -11,7 +11,6 @@
  =====================================================================================
  */
 
-#include "tcpsocket.h"
 #include <sys/types.h>
 #include <sys/socket.h> 
 #include <assert.h>
@@ -20,6 +19,9 @@
 #include <stdio.h>
 #include <iostream>
 #include <arpa/inet.h>
+#include "tcpsocket.h"
+#include "socket_util.h"
+
 using namespace std;
 
 //任意地址，任意端口，任意backlog
@@ -73,6 +75,7 @@ void tcpsocket::tcplisten()
 	} else {
 	     addr.sin_port = htons(0);	
 	}
+	setfdreuseaddr(socketfd);
 	// setp 2
 	ret = bind(socketfd,(struct sockaddr*)&addr,sizeof(struct sockaddr_in));
 	if (ret != 0)
