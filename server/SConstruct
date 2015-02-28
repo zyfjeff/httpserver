@@ -1,10 +1,10 @@
 import os
 env = Environment()
 current_path = os.getcwd()
-test_root=os.path.dirname(current_path)+"/server/"
+http_root=os.path.dirname(current_path)+"/http/"
 comm_root=os.path.dirname(current_path)+"/comm/"
 
-env.Append(CPPPATH = [current_path, test_root,comm_root])
+env.Append(CPPPATH = [current_path, http_root,comm_root])
 
 env.Append(LIBPATH = [
            ])
@@ -16,6 +16,6 @@ env.Append(CCFLAGS = ['-Wall', '-O2', '-g', '-std=c++11'])
 
 
 env.Program(
-        target="test_tcpsocket",
-        source=["test_tcpsocket.cpp",test_root+"/tcpsocket.cpp",comm_root+"/socket_util.cpp"]
+        target="main",
+        source=["main.cpp","tcpsocket.cpp",comm_root+"/socket_util.cpp",http_root+"/httpparse.cpp"]
 )
