@@ -23,18 +23,29 @@
 #include <fstream>
 #include "config.h"
 using namespace std;
+
 #define ERROR_EXIT(msg) do{ perror(msg);exit(EXIT_FAILURE);}while(0)
 
+// 去除空格
 #define TRIM(str) while(isspace(*str))str++;
 
-enum LINE_STATUS{LINE_BAD = 0,LINE_OK = 1,LINE_NONE = 2,LINE_END=3};
-enum HTTP_STATUS{METHOD = 0,FILENAME = 1,VERSION = 2};
 
+extern char buf_404[];
+enum LINE_STATUS{LINE_BAD = 0,LINE_OK = 1,LINE_NONE = 2,LINE_END=3};
+
+enum HTTP_STATUS{METHOD = 0,FILENAME = 1,VERSION = 2};
 
 int parse_request(int sockfd,char *buf);
 void deal_request(int client,char *method,char *filename,char *version);
 
-void headers(int client)
+static const char *skip(const char *in) {while (in && *in && (unsigned char)*in<=32) in++; return in;}
+
+/*
+ * 	200 ok
+ *
+ */
+
+void headers_200(int client)
 {
  char buf[1024];
  bzero(buf,sizeof(buf));
@@ -48,8 +59,28 @@ void headers(int client)
  send(client, buf, strlen(buf), 0); 
 }
 
+/*
+ *	404无法访问	
+ */
+void headers_404(int client)
+{
+ char buf[1024];
+ bzero(buf,sizeof(buf));
+ strcpy(buf, "HTTP/1.0 404 Not Found\r\n");
+ send(client, buf, strlen(buf), 0);
+ strcpy(buf, SERVER_STRING);
+ send(client, buf, strlen(buf), 0);
+ sprintf(buf, "Content-Type: text/html\r\n");
+ send(client, buf, strlen(buf), 0);
+ strcpy(buf, "\r\n");
+ send(client, buf, strlen(buf), 0); 
+}
 
 
+/*
+ *	解析一行数据
+ *
+ */
 int parse_line(int sockfd,char *buf)
 {
 	int count = -1;
@@ -72,15 +103,19 @@ int parse_line(int sockfd,char *buf)
 			cout << "client end of" << endl;
 			return LINE_BAD;
 		} else {	
-			if(errno == EINTR)
+			if(errno == EINTR) //信号中断
 				goto begin;
 			else
-				ERROR_EXIT("recv:");
+				ERROR_EXIT("recv:");//接收错误
 		}	
 				
 	}
 	return sockfd;	
 }
+
+/*
+ *  	解析HTPP
+ */
 
 int parse_http(int sockfd)
 {
@@ -115,6 +150,8 @@ int parse_request(int sockfd,char *buf)
 	char version[255];
 	HTTP_STATUS status = METHOD;
 	bzero(method,sizeof(method));
+	bzero(filename,sizeof(filename));
+	bzero(version,sizeof(version));
 	int count = 0;
 	TRIM(buf);//去除头部空格
 	while(*buf != '\0') {
@@ -124,10 +161,8 @@ int parse_request(int sockfd,char *buf)
 					method[count] = *buf;
 					count++;
 					buf++;
-					status = METHOD;
 				} else {
-					method[++count] = '\0';
-					buf++;
+					method[count] = '\0';
 					TRIM(buf);
 					count = 0;
 					status = FILENAME;
@@ -139,10 +174,8 @@ int parse_request(int sockfd,char *buf)
 					filename[count] = *buf;
 					count++;
 					buf++;
-					status = FILENAME;
 				} else {
-					filename[++count] = '\0';
-					buf++;
+					filename[count] = '\0';
 					TRIM(buf);
 					count = 0;
 					status = VERSION;
@@ -154,10 +187,8 @@ int parse_request(int sockfd,char *buf)
 					version[count] = *buf;
 					count++;
 					buf++;
-					status = VERSION;
 				} else {
-					version[++count] = '\0';
-					buf++;
+					version[count] = '\0';
 					TRIM(buf);
 					count = 0;
 					status = VERSION;
@@ -174,8 +205,14 @@ int parse_request(int sockfd,char *buf)
 //	printf("version:%s\n",version);
 }
 
+
+/*
+ * 	读取文件，返回客户端信息.
+ *
+ */
 void deal_request(int client,char *method,char *filename,char *version)
 {	
+	int ret = 0;
 	if(strcmp(filename,"/") == 0) {
 		strcpy(filename,"/index.html");
 	}
@@ -184,14 +221,25 @@ void deal_request(int client,char *method,char *filename,char *version)
 	bzero(path,sizeof(path));
 	sprintf(path,"%s%s",HTTP_ROOT,filename);
 	
-//	const char *path = strcat(HTTP_ROOT,filename);
-
-	//发送http头部
-	headers(client);
-	//发送http body
 	ifstream file;
 	char output[BUFSIZ];
 	bzero(output,sizeof(output));
+	if(access(path,F_OK) == 0) {
+		//输出200
+		headers_200(client);
+	} else {
+		//输出404
+		headers_404(client);
+		bzero(path,sizeof(path));
+		sprintf(path,"%s%s",HTTP_ROOT,"404.html");
+		if (access(path,F_OK) != 0) {
+			char *err404 = "<h1>404 Not Found</h1>";
+			ret  = send(client,err404,strlen(err404),0);
+			perror("send:");
+			return;
+		}
+	}
+
 	file.open(path);
 	cout << path << endl;
 	while(file >> output)
@@ -201,4 +249,5 @@ void deal_request(int client,char *method,char *filename,char *version)
 		bzero(output,sizeof(output));
 	}
 	file.close();
+	close(client);
 }	
