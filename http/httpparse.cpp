@@ -31,11 +31,22 @@ using namespace std;
 
 
 extern char buf_404[];
+
+//分析行的几种状态
 enum LINE_STATUS{LINE_BAD = 0,LINE_OK = 1,LINE_NONE = 2,LINE_END=3};
 
+// 请求行的三个项
 enum HTTP_STATUS{METHOD = 0,FILENAME = 1,VERSION = 2};
 
-int parse_request(int sockfd,char *buf);
+//请求行 还是请求头
+enum PARSE_STATUS{REQUEST = 0,HEADERS = 1};
+
+void parse_request(int sockfd,char *buf);
+
+void parse_headers(int sockfd,char *buf);
+
+void deal_headers(int client,char *headers,char *value);
+
 void deal_request(int client,char *method,char *filename,char *version);
 
 static const char *skip(const char *in) {while (in && *in && (unsigned char)*in<=32) in++; return in;}
@@ -81,7 +92,7 @@ void headers_404(int client)
  *	解析一行数据
  *
  */
-int parse_line(int sockfd,char *buf)
+LINE_STATUS parse_line(int sockfd,char *buf)
 {
 	int count = -1;
 	char ch;
@@ -90,7 +101,7 @@ int parse_line(int sockfd,char *buf)
 	{
 	   begin:
 		ret = recv(sockfd,&ch,1,0);
-		if (ret >= 0) {
+		if (ret > 0) {
 			count++;
 			buf[count] = ch;
 			if(buf[count] == '\n' && buf[count-1] == '\r') { //读取到完整行了
@@ -100,7 +111,7 @@ int parse_line(int sockfd,char *buf)
 			else
 				continue;
 		} else if (ret == 0) {
-			cout << "client end of" << endl;
+			cout << "client end of" << endl; //读取到不完整的行
 			return LINE_BAD;
 		} else {	
 			if(errno == EINTR) //信号中断
@@ -110,30 +121,43 @@ int parse_line(int sockfd,char *buf)
 		}	
 				
 	}
-	return sockfd;	
+	return LINE_NONE;	 //读取结束
 }
 
 /*
  *  	解析HTPP
  */
 
-int parse_http(int sockfd)
+void parse_http(int sockfd)
 {
 	char buf[1024];
 	bzero(buf,sizeof(buf));
+	if (parse_line(sockfd,buf) == LINE_OK)
+		parse_request(sockfd,buf);
+	close(sockfd);
+/*
+	PARSE_STATUS status = REQUEST;
 	while(parse_line(sockfd,buf) == LINE_OK)
 	{
-	//	cout << buf << endl;
-		parse_request(sockfd,buf);
-		break;
+		cout << buf << endl;
+		if (status == REQUEST) {
+			parse_request(sockfd,buf);
+			bzero(buf,sizeof(buf));
+			status = HEADERS;
+		} else {
+			parse_headers(sockfd,buf);
+			bzero(buf,sizeof(buf));
+		}
 	}
-	return sockfd;
+*/
+	cout << "end of " << endl;
+//	close(sockfd);
 }
 
 /*
  * 解析http的请求行，分析其请求方法,请求文件, HTTP协议版本
  */
-int parse_request(int sockfd,char *buf)
+void parse_request(int sockfd,char *buf)
 {
 //strtok实现请求行的分析
 /*
@@ -199,12 +223,15 @@ int parse_request(int sockfd,char *buf)
 				break;
 		}
 	}
+	while(parse_line(sockfd,buf) != LINE_BAD  && (strcmp("\r\n",buf) != 0)) //丢弃头部
+		cout << buf << endl;
+	cout << "end" << endl;
 	deal_request(sockfd,method,filename,version);
 //	printf("memthod:%s\n",method);
 //	printf("filename:%s\n",filename);
 //	printf("version:%s\n",version);
-}
 
+}
 
 /*
  * 	读取文件，返回客户端信息.
@@ -249,5 +276,15 @@ void deal_request(int client,char *method,char *filename,char *version)
 		bzero(output,sizeof(output));
 	}
 	file.close();
+}
+
+void parse_headers(int client,char *buf)
+{
+	cout << buf << endl;	
+
+}
+
+void deal_headers(int client,char *headers,char *value)
+{
 	close(client);
-}	
+}
