@@ -3,7 +3,7 @@
  *
  *       Filename:  socket_util.h
  *
- *    Description:  socket适用函数头文件
+ *    Description:  socket实用函数头文件
  *
  *        Version:  1.0
  *        Created:  27/02/15 05:37:09
@@ -20,5 +20,6 @@
 
 void setnonblocking(int fd);
 void setfdreuseaddr(int sockfd);
-
+size_t write(int fd,void *ptr,size_t n);
+ssize_t readn(int fd,void *ptr,size_t n);
 #endif // end HTTPSERVER_COMM_SOCKET_UTIL_H

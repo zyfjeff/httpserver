@@ -16,6 +16,8 @@
 #include <assert.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <unistd.h>
+#include <errno.h>
 
 //设置fd为非阻塞
 void setnonblocking(int fd)
@@ -37,4 +39,54 @@ void setfdreuseaddr(int sockfd)
 }
 
 
+//读取一行
+
+ssize_t readn(int fd,void *ptr,size_t n)
+{
+	size_t nleft;	
+	size_t nread;
+	char *buf = (char*)ptr;
+	nleft = n;
+	while(nleft > 0)
+	{
+		nread = recv(fd,buf,nleft,MSG_WAITALL);
+		if (nread > 0) {
+			nleft  = nleft - nread;
+			buf += nread;
+		} else if(nread == 0) {
+			return n-nleft;
+		} else {
+			if(errno == EINTR)
+				continue;
+			else
+				return -1;
+		}
+	}
+	return n-nleft;
+}
+
+//写入一行
+
+size_t write(int fd,void *ptr,size_t n)
+{
+	size_t nleft;
+	size_t nwrite;
+	char *buf = (char*)ptr;
+	nleft = n;
+	while(nleft > 0)
+	{
+		nwrite = send(fd,buf,nleft,0);
+		if (nwrite >0) {
+			nleft = nleft - nwrite;
+			buf += nwrite;
+		} else if(nwrite == 0) {
+			return n-nleft;
+		} else {
+		       if(errno == EINTR)
+				continue;
+			else
+				return -1;
+		}
+	}
+}
 
