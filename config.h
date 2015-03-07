@@ -17,4 +17,5 @@
  */
 
 char *HTTP_ROOT = "/root/httpserver/htdoc";
-const char *SERVER_STRING = "zyf1.0";
+const char *SERVER_STRING = "Server: zyf1.0";
+char buf_404[] = "404 Not Found";
