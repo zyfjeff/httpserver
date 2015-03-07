@@ -21,6 +21,9 @@
 #include <unistd.h>
 #include <errno.h>
 #include <fstream>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include "config.h"
 using namespace std;
 
@@ -49,23 +52,30 @@ void deal_headers(int client,char *headers,char *value);
 
 void deal_request(int client,char *method,char *filename,char *version);
 
-static const char *skip(const char *in) {while (in && *in && (unsigned char)*in<=32) in++; return in;}
+
+//static const char *skip(const char *in) {while (in && *in && (unsigned char)*in<=32) in++; return in;}
 
 /*
  * 	200 ok
  *
  */
 
-void headers_200(int client)
+static void headers_200(int client,const char *type,unsigned int size)
 {
  char buf[1024];
  bzero(buf,sizeof(buf));
  strcpy(buf, "HTTP/1.0 200 OK\r\n");
  send(client, buf, strlen(buf), 0);
+ bzero(buf,sizeof(buf));
  strcpy(buf, SERVER_STRING);
  send(client, buf, strlen(buf), 0);
- sprintf(buf, "Content-Type: text/html\r\n");
+ bzero(buf,sizeof(buf));
+ sprintf(buf,"Content-Length: %d",size);
+ send(client,buf,strlen(buf),0);
+ bzero(buf,sizeof(buf));
+ sprintf(buf, "Content-Type: %s\r\n",type);
  send(client, buf, strlen(buf), 0);
+ bzero(buf,sizeof(buf));
  strcpy(buf, "\r\n");
  send(client, buf, strlen(buf), 0); 
 }
@@ -73,7 +83,7 @@ void headers_200(int client)
 /*
  *	404无法访问	
  */
-void headers_404(int client)
+static void headers_404(int client)
 {
  char buf[1024];
  bzero(buf,sizeof(buf));
@@ -87,6 +97,25 @@ void headers_404(int client)
  send(client, buf, strlen(buf), 0); 
 }
 
+static const char * GetType(char *filename)
+{
+	char *postfix;
+	postfix = strchr(filename,'.');
+	if (!strcmp(postfix,".html") || !strcmp(postfix,".htm"))	{
+		return "text/html; charset=UTF-8";
+	} else if (!strcmp(postfix,".jpg") || !strcmp(postfix,".jpeg")) {
+		return "image/ipeg";
+	} else if(!strcmp(postfix,".css")) {
+		return "text/css";
+	} else if(!strcmp(postfix,"gif")) {
+		return "image/gif";
+	} else if(!strcmp(postfix,".png")) {
+		return "image/png";
+	} else {
+		return "text/plain; charset=UTF-8";
+	}
+
+}
 
 /*
  *	解析一行数据
@@ -225,7 +254,6 @@ void parse_request(int sockfd,char *buf)
 	}
 	while(parse_line(sockfd,buf) != LINE_BAD  && (strcmp("\r\n",buf) != 0)) //丢弃头部
 		cout << buf << endl;
-	cout << "end" << endl;
 	deal_request(sockfd,method,filename,version);
 //	printf("memthod:%s\n",method);
 //	printf("filename:%s\n",filename);
@@ -247,13 +275,14 @@ void deal_request(int client,char *method,char *filename,char *version)
 	char path[2048];
 	bzero(path,sizeof(path));
 	sprintf(path,"%s%s",HTTP_ROOT,filename);
-	
+	struct stat filestat;
 	ifstream file;
 	char output[BUFSIZ];
 	bzero(output,sizeof(output));
 	if(access(path,F_OK) == 0) {
 		//输出200
-		headers_200(client);
+		stat(path,&filestat);
+		headers_200(client,GetType(filename),static_cast<unsigned int>(filestat.st_size));
 	} else {
 		//输出404
 		headers_404(client);
@@ -267,6 +296,13 @@ void deal_request(int client,char *method,char *filename,char *version)
 		}
 	}
 
+	int filefd = open(path,O_RDWR);
+	char *data = (char *)mmap(0,filestat.st_size,PROT_READ|PROT_WRITE,MAP_SHARED,filefd,0);
+	send(client,data,filestat.st_size,0);
+	munmap(data,filestat.st_size);
+	close(filefd);
+	
+/*
 	file.open(path);
 	cout << path << endl;
 	while(file >> output)
@@ -276,6 +312,7 @@ void deal_request(int client,char *method,char *filename,char *version)
 		bzero(output,sizeof(output));
 	}
 	file.close();
+*/
 }
 
 void parse_headers(int client,char *buf)
